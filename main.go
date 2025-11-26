@@ -124,8 +124,14 @@ func handleRequest(w http.ResponseWriter, r *http.Request, baseFQDN string, file
 		w.Header().Set("Content-Type", "application/json")
 	}
 
-	// Set cache control
-	w.Header().Set("Cache-Control", "public, must-revalidate, max-age=600")
+	// Set cache control based on file type
+	// Version files (both nightly and stable) get short cache (1 minute) for faster updates
+	// Other files get longer cache (10 minutes)
+	if strings.Contains(r.URL.Path, "version") {
+		w.Header().Set("Cache-Control", "public, max-age=60, s-maxage=60")
+	} else {
+		w.Header().Set("Cache-Control", "public, must-revalidate, max-age=600")
+	}
 
 	// Handle ETag caching manually for embedded files
 	etag := etags[r.URL.Path]
