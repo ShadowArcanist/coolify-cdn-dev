@@ -16,6 +16,9 @@ import (
 //go:embed json/*
 var jsonFiles embed.FS
 
+//go:embed images/*
+var imageFiles embed.FS
+
 // loadJSONFiles recursively loads all JSON files from the embedded filesystem
 func loadJSONFiles(dir, prefix string, files map[string]*fileData, etags map[string]string) error {
 	entries, err := jsonFiles.ReadDir(dir)
@@ -57,6 +60,84 @@ func loadJSONFiles(dir, prefix string, files map[string]*fileData, etags map[str
 	return nil
 }
 
+// loadImageFiles recursively loads all image files from the embedded filesystem
+func loadImageFiles(dir, prefix string, files map[string]*fileData, etags map[string]string) error {
+	entries, err := imageFiles.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		fullPath := dir + "/" + entry.Name()
+
+		if entry.IsDir() {
+			// Recursively process subdirectories
+			newPrefix := prefix + "/" + entry.Name()
+			if err := loadImageFiles(fullPath, newPrefix, files, etags); err != nil {
+				return err
+			}
+		} else if isImageFile(entry.Name()) {
+			// Load image file
+			content, err := imageFiles.ReadFile(fullPath)
+			if err != nil {
+				log.Printf("Failed to read embedded file %s: %v", fullPath, err)
+				continue
+			}
+
+			// Create URL path (remove "images" prefix and add leading slash)
+			urlPath := prefix + "/" + entry.Name()
+
+			files[urlPath] = &fileData{
+				content: content,
+				modTime: time.Now(), // Use build time as mod time
+			}
+
+			// Calculate ETag
+			hash := md5.Sum(content)
+			etags[urlPath] = fmt.Sprintf("\"%x\"", hash)
+		}
+	}
+
+	return nil
+}
+
+// isImageFile checks if a file has a supported image extension
+func isImageFile(filename string) bool {
+	extensions := []string{".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
+	for _, ext := range extensions {
+		if strings.HasSuffix(strings.ToLower(filename), ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// getContentType returns the appropriate Content-Type header for a file path
+func getContentType(path string) string {
+	lowerPath := strings.ToLower(path)
+
+	switch {
+	case strings.HasSuffix(lowerPath, ".json"):
+		return "application/json"
+	case strings.HasSuffix(lowerPath, ".png"):
+		return "image/png"
+	case strings.HasSuffix(lowerPath, ".jpg"), strings.HasSuffix(lowerPath, ".jpeg"):
+		return "image/jpeg"
+	case strings.HasSuffix(lowerPath, ".gif"):
+		return "image/gif"
+	case strings.HasSuffix(lowerPath, ".webp"):
+		return "image/webp"
+	case strings.HasSuffix(lowerPath, ".svg"):
+		return "image/svg+xml"
+	case strings.HasSuffix(lowerPath, ".bmp"):
+		return "image/bmp"
+	case strings.HasSuffix(lowerPath, ".ico"):
+		return "image/x-icon"
+	default:
+		return ""
+	}
+}
+
 func main() {
 	// Read base FQDN from environment variable, default to coolify.io
 	baseFQDN := os.Getenv("BASE_FQDN")
@@ -74,7 +155,13 @@ func main() {
 		log.Fatal("Failed to load JSON files:", err)
 	}
 
-	log.Printf("Loaded %d JSON files: %v", len(files), getFileList(files))
+	// Recursively load all image files from embedded images directory
+	err = loadImageFiles("images", "", files, etags)
+	if err != nil {
+		log.Fatal("Failed to load image files:", err)
+	}
+
+	log.Printf("Loaded %d files total: %v", len(files), getFileList(files))
 	log.Printf("Base FQDN for redirects: %s", baseFQDN)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -119,12 +206,13 @@ func handleRequest(w http.ResponseWriter, r *http.Request, baseFQDN string, file
 		return
 	}
 
-	// Set content type for JSON files
-	if strings.HasSuffix(r.URL.Path, ".json") {
-		w.Header().Set("Content-Type", "application/json")
+	// Set content type based on file extension
+	contentType := getContentType(r.URL.Path)
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
 	}
 
-		w.Header().Set("Cache-Control", "public, max-age=60, s-maxage=60")
+	w.Header().Set("Cache-Control", "public, must-revalidate, max-age=600")
 
 	// Handle ETag caching manually for embedded files
 	etag := etags[r.URL.Path]

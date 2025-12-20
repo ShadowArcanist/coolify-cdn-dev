@@ -12,6 +12,7 @@ RUN go mod download
 # Copy source code
 COPY main.go healthcheck.go ./
 COPY json/ ./json/
+COPY images/ ./images/
 
 # Build the binaries with optimizations for the target platform
 ARG TARGETOS TARGETARCH BASE_FQDN=coolify.io
