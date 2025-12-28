@@ -174,6 +174,71 @@ else
     test_result "HEAD request returns 200 OK" "FAIL" "200" "$http_code"
 fi
 
+# Test 10: PNG image endpoint
+echo -e "\n🖼️  Testing PNG Image Endpoint"
+http_code=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/cl-logo.png")
+content_length=$(curl -s -I "$BASE_URL/cl-logo.png" | grep -i "content-length" | tr -d '\r' | sed 's/.*: //')
+
+if [ "$http_code" = "200" ] && [ -n "$content_length" ] && [ "$content_length" -gt 0 ]; then
+    test_result "PNG image endpoint returns 200 and content" "PASS"
+else
+    test_result "PNG image endpoint returns 200 and content" "FAIL" "200, content" "$http_code, length=$content_length"
+fi
+
+# Test 11: PNG image headers
+echo -e "\n🏷️  Testing PNG Image Headers"
+response=$(curl -s -I "$BASE_URL/cl-logo.png")
+content_type=$(echo "$response" | grep -i "content-type" | tr -d '\r')
+etag=$(echo "$response" | grep -i "etag" | tr -d '\r')
+cache_control=$(echo "$response" | grep -i "cache-control" | tr -d '\r')
+cors_origin=$(echo "$response" | grep -i "access-control-allow-origin" | tr -d '\r')
+
+if echo "$content_type" | grep -q "image/png"; then
+    test_result "PNG image has correct Content-Type" "PASS"
+else
+    test_result "PNG image has correct Content-Type" "FAIL" "image/png" "$content_type"
+fi
+
+if echo "$etag" | grep -i -q "etag:"; then
+    test_result "PNG image has ETag header" "PASS"
+else
+    test_result "PNG image has ETag header" "FAIL" "ETag present" "$etag"
+fi
+
+if echo "$cache_control" | grep -q "public"; then
+    test_result "PNG image has Cache-Control header" "PASS"
+else
+    test_result "PNG image has Cache-Control header" "FAIL" "Cache-Control present" "$cache_control"
+fi
+
+if [ "$cors_origin" = "Access-Control-Allow-Origin: *" ]; then
+    test_result "PNG image has CORS headers" "PASS"
+else
+    test_result "PNG image has CORS headers" "FAIL" "Access-Control-Allow-Origin: *" "$cors_origin"
+fi
+
+# Test 12: WEBP image endpoint
+echo -e "\n🖼️  Testing WEBP Image Endpoint"
+http_code=$(curl -s -w "%{http_code}" -o /dev/null "$BASE_URL/discord-support-search1.webp")
+content_length=$(curl -s -I "$BASE_URL/discord-support-search1.webp" | grep -i "content-length" | tr -d '\r' | sed 's/.*: //')
+
+if [ "$http_code" = "200" ] && [ -n "$content_length" ] && [ "$content_length" -gt 0 ]; then
+    test_result "WEBP image endpoint returns 200 and content" "PASS"
+else
+    test_result "WEBP image endpoint returns 200 and content" "FAIL" "200, content" "$http_code, length=$content_length"
+fi
+
+# Test 13: WEBP image headers
+echo -e "\n🏷️  Testing WEBP Image Headers"
+response=$(curl -s -I "$BASE_URL/discord-support-search1.webp")
+content_type=$(echo "$response" | grep -i "content-type" | tr -d '\r')
+
+if echo "$content_type" | grep -q "image/webp"; then
+    test_result "WEBP image has correct Content-Type" "PASS"
+else
+    test_result "WEBP image has correct Content-Type" "FAIL" "image/webp" "$content_type"
+fi
+
 # Summary
 echo -e "\n────────────────────────────────────────"
 echo -e "📊 Test Summary:"
