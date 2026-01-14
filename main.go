@@ -22,6 +22,12 @@ var imageFiles embed.FS
 //go:embed scripts/*
 var scriptFiles embed.FS
 
+//go:embed docker/*
+var dockerFiles embed.FS
+
+//go:embed environment/*
+var environmentFiles embed.FS
+
 // loadJSONFiles recursively loads all JSON files from the embedded filesystem
 func loadJSONFiles(dir, prefix string, files map[string]*fileData, etags map[string]string) error {
 	entries, err := jsonFiles.ReadDir(dir)
@@ -167,6 +173,105 @@ func isScriptFile(filename string) bool {
 	return false
 }
 
+// loadDockerFiles recursively loads all docker files from the embedded filesystem
+func loadDockerFiles(dir, prefix string, files map[string]*fileData, etags map[string]string) error {
+	entries, err := dockerFiles.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		fullPath := dir + "/" + entry.Name()
+
+		if entry.IsDir() {
+			// Recursively process subdirectories
+			newPrefix := prefix + "/" + entry.Name()
+			if err := loadDockerFiles(fullPath, newPrefix, files, etags); err != nil {
+				return err
+			}
+		} else if isDockerFile(entry.Name()) {
+			// Load docker file
+			content, err := dockerFiles.ReadFile(fullPath)
+			if err != nil {
+				log.Printf("Failed to read embedded file %s: %v", fullPath, err)
+				continue
+			}
+
+			// Create URL path (remove "docker" prefix and add leading slash)
+			urlPath := prefix + "/" + entry.Name()
+
+			files[urlPath] = &fileData{
+				content: content,
+				modTime: time.Now(), // Use build time as mod time
+			}
+
+			// Calculate ETag
+			hash := md5.Sum(content)
+			etags[urlPath] = fmt.Sprintf("\"%x\"", hash)
+		}
+	}
+
+	return nil
+}
+
+// isDockerFile checks if a file has a supported docker/yaml extension
+func isDockerFile(filename string) bool {
+	lowerName := strings.ToLower(filename)
+	extensions := []string{".yml", ".yaml"}
+	for _, ext := range extensions {
+		if strings.HasSuffix(lowerName, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// loadEnvironmentFiles recursively loads all environment files from the embedded filesystem
+func loadEnvironmentFiles(dir, prefix string, files map[string]*fileData, etags map[string]string) error {
+	entries, err := environmentFiles.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		fullPath := dir + "/" + entry.Name()
+
+		if entry.IsDir() {
+			// Recursively process subdirectories
+			newPrefix := prefix + "/" + entry.Name()
+			if err := loadEnvironmentFiles(fullPath, newPrefix, files, etags); err != nil {
+				return err
+			}
+		} else if isEnvironmentFile(entry.Name()) {
+			// Load environment file
+			content, err := environmentFiles.ReadFile(fullPath)
+			if err != nil {
+				log.Printf("Failed to read embedded file %s: %v", fullPath, err)
+				continue
+			}
+
+			// Create URL path (remove "environment" prefix and add leading slash)
+			urlPath := prefix + "/" + entry.Name()
+
+			files[urlPath] = &fileData{
+				content: content,
+				modTime: time.Now(), // Use build time as mod time
+			}
+
+			// Calculate ETag
+			hash := md5.Sum(content)
+			etags[urlPath] = fmt.Sprintf("\"%x\"", hash)
+		}
+	}
+
+	return nil
+}
+
+// isEnvironmentFile checks if a file is an environment file
+func isEnvironmentFile(filename string) bool {
+	return strings.HasPrefix(strings.ToLower(filename), ".env")
+}
+
 // getContentType returns the appropriate Content-Type header for a file path
 func getContentType(path string) string {
 	lowerPath := strings.ToLower(path)
@@ -194,6 +299,10 @@ func getContentType(path string) string {
 		return "application/x-powershell"
 	case strings.HasSuffix(lowerPath, ".bat"), strings.HasSuffix(lowerPath, ".cmd"):
 		return "application/x-msdos-program"
+	case strings.HasSuffix(lowerPath, ".yml"), strings.HasSuffix(lowerPath, ".yaml"):
+		return "text/yaml"
+	case strings.Contains(lowerPath, ".env"):
+		return "text/plain"
 	default:
 		return ""
 	}
@@ -226,6 +335,18 @@ func main() {
 	err = loadScriptFiles("scripts", "", files, etags)
 	if err != nil {
 		log.Fatal("Failed to load script files:", err)
+	}
+
+	// Recursively load all docker files from embedded docker directory
+	err = loadDockerFiles("docker", "", files, etags)
+	if err != nil {
+		log.Fatal("Failed to load docker files:", err)
+	}
+
+	// Recursively load all environment files from embedded environment directory
+	err = loadEnvironmentFiles("environment", "", files, etags)
+	if err != nil {
+		log.Fatal("Failed to load environment files:", err)
 	}
 
 	log.Printf("Loaded %d files total: %v", len(files), getFileList(files))

@@ -14,6 +14,8 @@ COPY main.go healthcheck.go ./
 COPY json/ ./json/
 COPY images/ ./images/
 COPY scripts/ ./scripts/
+COPY docker/ ./docker/
+COPY environment/ ./environment/
 
 # Build the binaries with optimizations for the target platform
 ARG TARGETOS TARGETARCH BASE_FQDN=coolify.io
