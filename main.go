@@ -386,6 +386,11 @@ func handleRequest(w http.ResponseWriter, r *http.Request, baseFQDN string, file
 		return
 	}
 
+	// Return 404 for favicon.ico
+	if r.URL.Path == "/favicon.ico" {
+		http.NotFound(w, r)
+		return
+	}
 
 	// Check if file exists
 	fileData, exists := files[r.URL.Path]
