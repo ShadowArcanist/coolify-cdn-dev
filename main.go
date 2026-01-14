@@ -25,7 +25,7 @@ var scriptFiles embed.FS
 //go:embed docker/*
 var dockerFiles embed.FS
 
-//go:embed environment/*
+//go:embed all:environment/*
 var environmentFiles embed.FS
 
 // loadJSONFiles recursively loads all JSON files from the embedded filesystem
