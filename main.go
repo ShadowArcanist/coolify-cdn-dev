@@ -386,11 +386,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request, baseFQDN string, file
 		return
 	}
 
-	// Backward compatibility redirects
-	if r.URL.Path == "/coolify-nightly/releases.json" || r.URL.Path == "/coolify/releases.json" {
-		http.Redirect(w, r, "https://cdn.coolify.io/releases.json", http.StatusMovedPermanently)
-		return
-	}
 
 	// Check if file exists
 	fileData, exists := files[r.URL.Path]
