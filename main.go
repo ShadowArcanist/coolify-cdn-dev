@@ -19,6 +19,9 @@ var jsonFiles embed.FS
 //go:embed images/*
 var imageFiles embed.FS
 
+//go:embed scripts/*
+var scriptFiles embed.FS
+
 // loadJSONFiles recursively loads all JSON files from the embedded filesystem
 func loadJSONFiles(dir, prefix string, files map[string]*fileData, etags map[string]string) error {
 	entries, err := jsonFiles.ReadDir(dir)
@@ -112,6 +115,58 @@ func isImageFile(filename string) bool {
 	return false
 }
 
+// loadScriptFiles recursively loads all script files from the embedded filesystem
+func loadScriptFiles(dir, prefix string, files map[string]*fileData, etags map[string]string) error {
+	entries, err := scriptFiles.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		fullPath := dir + "/" + entry.Name()
+
+		if entry.IsDir() {
+			// Recursively process subdirectories
+			newPrefix := prefix + "/" + entry.Name()
+			if err := loadScriptFiles(fullPath, newPrefix, files, etags); err != nil {
+				return err
+			}
+		} else if isScriptFile(entry.Name()) {
+			// Load script file
+			content, err := scriptFiles.ReadFile(fullPath)
+			if err != nil {
+				log.Printf("Failed to read embedded file %s: %v", fullPath, err)
+				continue
+			}
+
+			// Create URL path (remove "scripts" prefix and add leading slash)
+			urlPath := prefix + "/" + entry.Name()
+
+			files[urlPath] = &fileData{
+				content: content,
+				modTime: time.Now(), // Use build time as mod time
+			}
+
+			// Calculate ETag
+			hash := md5.Sum(content)
+			etags[urlPath] = fmt.Sprintf("\"%x\"", hash)
+		}
+	}
+
+	return nil
+}
+
+// isScriptFile checks if a file has a supported script extension
+func isScriptFile(filename string) bool {
+	extensions := []string{".sh", ".bash", ".ps1", ".bat", ".cmd"}
+	for _, ext := range extensions {
+		if strings.HasSuffix(strings.ToLower(filename), ext) {
+			return true
+		}
+	}
+	return false
+}
+
 // getContentType returns the appropriate Content-Type header for a file path
 func getContentType(path string) string {
 	lowerPath := strings.ToLower(path)
@@ -133,6 +188,12 @@ func getContentType(path string) string {
 		return "image/bmp"
 	case strings.HasSuffix(lowerPath, ".ico"):
 		return "image/x-icon"
+	case strings.HasSuffix(lowerPath, ".sh"), strings.HasSuffix(lowerPath, ".bash"):
+		return "text/x-shellscript"
+	case strings.HasSuffix(lowerPath, ".ps1"):
+		return "application/x-powershell"
+	case strings.HasSuffix(lowerPath, ".bat"), strings.HasSuffix(lowerPath, ".cmd"):
+		return "application/x-msdos-program"
 	default:
 		return ""
 	}
@@ -159,6 +220,12 @@ func main() {
 	err = loadImageFiles("images", "", files, etags)
 	if err != nil {
 		log.Fatal("Failed to load image files:", err)
+	}
+
+	// Recursively load all script files from embedded scripts directory
+	err = loadScriptFiles("scripts", "", files, etags)
+	if err != nil {
+		log.Fatal("Failed to load script files:", err)
 	}
 
 	log.Printf("Loaded %d files total: %v", len(files), getFileList(files))
